@@ -10,6 +10,10 @@ from user.models import User as UserModel
 from .serializer import TweetsSerializer
 from rest_framework.renderers import JSONRenderer
 from django.db.models.functions import Length
+from django.db.models import Q
+import csv
+import io
+
 
 class Tweets(APIView):
 
@@ -29,11 +33,17 @@ class Tweets(APIView):
         for vote in user_votes:
             voted_tweets.append(vote.split(":")[0])
 
-        all_entries = Tweet.objects.filter(category=c).order_by(Length('votes').asc())
+        all_entries = Tweet.objects.filter(category=c, enable=True).order_by(Length('votes').asc())
         selected_entries = []
         for tweet in all_entries:
             if len(selected_entries) == 15:
-                break;
+                break
+            if str(tweet.id) not in voted_tweets:
+                selected_entries.append(tweet)
+        all_entries = Tweet.objects.filter(~Q(category=c), enable=True).order_by(Length('votes').asc())
+        for tweet in all_entries:
+            if len(selected_entries) == 20:
+                break
             if str(tweet.id) not in voted_tweets:
                 selected_entries.append(tweet)
         all_entries = selected_entries
@@ -61,3 +71,14 @@ class Tweets(APIView):
         print(tweet)
         tweet.save()
         return Response({"status": "successfully"}, status=status.HTTP_200_OK)
+
+    def put(self, request):
+        file_obj = request.FILES['file']
+        decoded_file = file_obj.read().decode('utf-8')
+        io_string = io.StringIO(decoded_file)
+        spamreader = csv.reader(io_string, delimiter=' ', quotechar='|')
+        for row in spamreader:
+            print(row)
+            t = Tweet(text=row[0].split(',')[1], category=row[0].split(',')[0])
+            t.save()
+        return Response({"status": "successfully added!"}, status=status.HTTP_200_OK)
