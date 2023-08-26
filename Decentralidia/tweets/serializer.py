@@ -5,3 +5,4 @@ class TweetsSerializer(serializers.Serializer):
     text = serializers.CharField(max_length=200)
     category = serializers.CharField(max_length=200)
     votes = serializers.CharField(max_length=200)
+    likes_dislikes = serializers.CharField(max_length=100000, required=False)

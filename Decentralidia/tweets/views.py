@@ -57,20 +57,47 @@ class Tweets(APIView):
     
 
     def post(self, request):
-        print(request.body)
-        tweet_id = json.loads(request.body.decode('utf-8'))["tweet_id"]
-        vote = json.loads(request.body.decode('utf-8'))["vote"]
-        fullname = json.loads(request.body.decode('utf-8'))["fullname"]
-
-        user_votes = UserModel.objects.filter(fullname=fullname)[0].votes
-        UserModel.objects.filter(fullname=fullname).update(votes= user_votes + str(tweet_id) + ":" + str(vote) + "#")
-
-        tweet = Tweet.objects.filter(id=tweet_id)[0]
-        tweet.votes += "#"
-        tweet.votes += str(vote)
-        print(tweet)
-        tweet.save()
-        return Response({"status": "successfully"}, status=status.HTTP_200_OK)
+            tweet_id = json.loads(request.body.decode('utf-8'))["tweet_id"]
+            vote = json.loads(request.body.decode('utf-8'))["vote"]
+            fullname = json.loads(request.body.decode('utf-8'))["fullname"]
+            like_or_dislike = json.loads(request.body.decode('utf-8')).get("like_dislike", None)  # Extract the like/dislike value
+    
+            # Fetch user by fullname
+            user = UserModel.objects.filter(fullname=fullname).first()
+            if not user:
+                return Response({"status": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+            # Update votes for the user
+            user_votes = user.votes
+            user.votes = user_votes + str(tweet_id) + ":" + str(vote) + "#"
+            user.save()
+    
+            # Handle like or dislike for the user and the tweet
+            if like_or_dislike:
+                # Update likes/dislikes for the user
+                user_likes_dislikes = user.likes_dislikes
+                user.likes_dislikes = user_likes_dislikes + str(tweet_id) + ":" + like_or_dislike + "#"
+                user.save()
+    
+                # Fetch the tweet
+                tweet = Tweet.objects.filter(id=tweet_id).first()
+                if not tweet:
+                    return Response({"status": "Tweet not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+                # Update likes/dislikes for the tweet
+                tweet_likes_dislikes = tweet.likes_dislikes
+                tweet.likes_dislikes = tweet_likes_dislikes + str(user.id) + ":" + like_or_dislike + "#"
+                tweet.save()
+    
+            # Update the votes for the tweet
+            tweet = Tweet.objects.filter(id=tweet_id).first()
+            if not tweet:
+                return Response({"status": "Tweet not found"}, status=status.HTTP_404_NOT_FOUND)
+            
+            tweet.votes += "#" + str(vote)
+            tweet.save()
+    
+            return Response({"status": "successfully"}, status=status.HTTP_200_OK)
 
     def put(self, request):
         file_obj = request.FILES['file']
