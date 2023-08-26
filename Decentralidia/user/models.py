@@ -14,3 +14,12 @@ class User(models.Model):
     age = models.IntegerField(default=0)  # Age in numbers and non-optional
     gender = models.CharField(max_length=2, choices=GENDER_CHOICES, default="")
     likes_dislikes = models.CharField(max_length=100000, default="", blank=True)  # format: tweet_id:like/dislike#
+
+    # # Efficiently get or create a user
+    # user, created = UserModel.objects.get_or_create(fullname=fullname)
+    
+    # #If user is found but not created, update age and gender
+    # if not created:
+    # user.age = age
+    # user.gender = gender
+    # user.save()
