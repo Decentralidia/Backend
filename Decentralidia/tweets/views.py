@@ -18,86 +18,82 @@ import io
 class Tweets(APIView):
 
     def get(self, request):
-        # print(request.body)
-        print(request.GET.get('category', ''))
         c = request.GET.get('category', '')
         fullname = request.GET.get('fullname', '')
-
-        user = UserModel.objects.filter(fullname=fullname)
-        if len(user) == 0:
-            u = UserModel(fullname=fullname)
-            u.save()
-
-        user_votes = UserModel.objects.filter(fullname=fullname)[0].votes.split("#")
-        voted_tweets = []
-        for vote in user_votes:
-            voted_tweets.append(vote.split(":")[0])
-
-        all_entries = Tweet.objects.filter(category=c, enable=True).order_by(Length('votes').asc())
-        selected_entries = []
-        for tweet in all_entries:
-            if len(selected_entries) == 15:
-                break
-            if str(tweet.id) not in voted_tweets:
-                selected_entries.append(tweet)
-        all_entries = Tweet.objects.filter(~Q(category=c), enable=True).order_by(Length('votes').asc())
-        for tweet in all_entries:
-            if len(selected_entries) == 20:
-                break
-            if str(tweet.id) not in voted_tweets:
-                selected_entries.append(tweet)
-        all_entries = selected_entries
-        print(all_entries)
-        tweets = []
-        for i in range(len(all_entries)):
-            serialized_obj = TweetsSerializer(all_entries[i])
-            obj = JSONRenderer().render(serialized_obj.data)
-            tweets.append(obj)
+        age = request.GET.get('age')
+        gender = request.GET.get('gender')
+    
+        # Checking if the age is a valid integer
+        try:
+            age = int(age)
+        except ValueError:
+            return Response({"error": "Invalid age provided"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Checking if gender is one of the predefined values
+        if gender not in ['male', 'female', 'non-binary', 'other']:
+            return Response({"error": "Invalid gender provided"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Efficiently get or create a user
+        user, created = UserModel.objects.get_or_create(
+            fullname=fullname, 
+            defaults={
+                'age': age,
+                'gender': gender
+            }
+        )
+    
+        # Check the votes for the user and exclude tweets that the user has already voted on
+        user_votes = user.votes.split("#")
+        voted_tweets = [vote.split(":")[0] for vote in user_votes]
+    
+        # Retrieve tweets based on the provided category
+        all_entries = Tweet.objects.filter(category=c, enable=True).exclude(id__in=voted_tweets).order_by(Length('votes').asc())
+        selected_entries = list(all_entries)[:15]
+    
+        # If we haven't reached 20 tweets yet, get more tweets from other categories
+        if len(selected_entries) < 20:
+            remaining_count = 20 - len(selected_entries)
+            all_entries = Tweet.objects.exclude(category=c).exclude(id__in=voted_tweets).order_by(Length('votes').asc())
+            selected_entries += list(all_entries)[:remaining_count]
+    
+        # Serialize the tweets
+        tweets = [JSONRenderer().render(TweetsSerializer(tweet).data) for tweet in selected_entries]
+    
         return Response({"tweets": tweets}, status=status.HTTP_200_OK)
-    
 
+    
     def post(self, request):
-            tweet_id = json.loads(request.body.decode('utf-8'))["tweet_id"]
-            vote = json.loads(request.body.decode('utf-8'))["vote"]
-            fullname = json.loads(request.body.decode('utf-8'))["fullname"]
-            like_or_dislike = json.loads(request.body.decode('utf-8')).get("like_dislike", None)  # Extract the like/dislike value
-    
-            # Fetch user by fullname
-            user = UserModel.objects.filter(fullname=fullname).first()
-            if not user:
-                return Response({"status": "User not found"}, status=status.HTTP_404_NOT_FOUND)
-    
-            # Update votes for the user
-            user_votes = user.votes
-            user.votes = user_votes + str(tweet_id) + ":" + str(vote) + "#"
+        tweet_id = json.loads(request.body.decode('utf-8'))["tweet_id"]
+        vote = json.loads(request.body.decode('utf-8'))["vote"]
+        fullname = json.loads(request.body.decode('utf-8'))["fullname"]
+        like_or_dislike = json.loads(request.body.decode('utf-8')).get("like_dislike", None)
+
+        user = UserModel.objects.filter(fullname=fullname).first()
+        if not user:
+            return Response({"status": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        user.votes += str(tweet_id) + ":" + str(vote) + "#"
+        user.save()
+
+        if like_or_dislike:
+            user.likes_dislikes += str(tweet_id) + ":" + like_or_dislike + "#"
             user.save()
-    
-            # Handle like or dislike for the user and the tweet
-            if like_or_dislike:
-                # Update likes/dislikes for the user
-                user_likes_dislikes = user.likes_dislikes
-                user.likes_dislikes = user_likes_dislikes + str(tweet_id) + ":" + like_or_dislike + "#"
-                user.save()
-    
-                # Fetch the tweet
-                tweet = Tweet.objects.filter(id=tweet_id).first()
-                if not tweet:
-                    return Response({"status": "Tweet not found"}, status=status.HTTP_404_NOT_FOUND)
-    
-                # Update likes/dislikes for the tweet
-                tweet_likes_dislikes = tweet.likes_dislikes
-                tweet.likes_dislikes = tweet_likes_dislikes + str(user.id) + ":" + like_or_dislike + "#"
-                tweet.save()
-    
-            # Update the votes for the tweet
+
             tweet = Tweet.objects.filter(id=tweet_id).first()
-            if not tweet:
+            if tweet:
+                tweet.likes_dislikes += str(user.id) + ":" + like_or_dislike + "#"
+                tweet.save()
+            else:
                 return Response({"status": "Tweet not found"}, status=status.HTTP_404_NOT_FOUND)
-            
+
+        tweet = Tweet.objects.filter(id=tweet_id).first()
+        if tweet:
             tweet.votes += "#" + str(vote)
             tweet.save()
-    
-            return Response({"status": "successfully"}, status=status.HTTP_200_OK)
+        else:
+            return Response({"status": "Tweet not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({"status": "successfully"}, status=status.HTTP_200_OK)
 
     def put(self, request):
         file_obj = request.FILES['file']
