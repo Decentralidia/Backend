@@ -49,11 +49,11 @@ class Tweets(APIView):
     
         # Retrieve tweets based on the provided category
         all_entries = Tweet.objects.filter(category=c, enable=True).order_by(Length('votes').asc())#Tweet.objects.filter(category=c, enable=True).exclude(id__in=voted_tweets).order_by(Length('votes').asc())
-        selected_entries = list(all_entries)[:15]
+        selected_entries = list(all_entries)[:10]
     
         # If we haven't reached 20 tweets yet, get more tweets from other categories
-        if len(selected_entries) < 20:
-            remaining_count = 20 - len(selected_entries)
+        if len(selected_entries) < 15:
+            remaining_count = 15 - len(selected_entries)
             all_entries = Tweet.objects.filter(~Q(category=c), enable=True).order_by(Length('votes').asc())#Tweet.objects.exclude(category=c).exclude(id__in=voted_tweets).order_by(Length('votes').asc())
             selected_entries += list(all_entries)[:remaining_count]
     
@@ -100,9 +100,9 @@ class Tweets(APIView):
         file_obj = request.FILES['file']
         decoded_file = file_obj.read().decode('utf-8')
         io_string = io.StringIO(decoded_file)
-        spamreader = csv.reader(io_string, delimiter=' ', quotechar='|')
+        spamreader = csv.reader(io_string, delimiter=',', quotechar='"')
         for row in spamreader:
             print(row)
-            t = Tweet(text=row[0].split(',')[1], category=row[0].split(',')[0])
+            t = Tweet(text=row[1].strip(), category=row[0].strip())
             t.save()
         return Response({"status": "successfully added!"}, status=status.HTTP_200_OK)
